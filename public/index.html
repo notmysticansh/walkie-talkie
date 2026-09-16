@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Tactical Walkie-Talkie</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --case-bg: #1c2125;
+      --case-border: #0e1113;
+      --lcd-bg: #8ba888;
+      --lcd-text: #1a2918;
+      --accent-orange: #ff7700;
+      --led-off: #374151;
+      --led-rx: #22c55e;
+      --led-tx: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background: radial-gradient(circle, #2d3748 0%, #0f172a 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+      font-family: 'Rajdhani', sans-serif;
+    }
+
+    .rig-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .top-hardware {
+      width: 320px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 30px;
+      z-index: 1;
+    }
+
+    .antenna {
+      width: 22px;
+      height: 130px;
+      background: linear-gradient(90deg, #111 0%, #333 40%, #111 100%);
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+      border: 2px solid #000;
+      box-shadow: -4px 0 10px rgba(0,0,0,0.5);
+    }
+
+    .knob-cluster {
+      display: flex;
+      gap: 15px;
+      align-items: flex-end;
+    }
+
+    .knob {
+      width: 44px;
+      height: 28px;
+      background: repeating-linear-gradient(90deg, #111, #111 4px, #374151 4px, #374151 8px);
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      border: 2px solid #000;
+      border-bottom: none;
+    }
+
+    .chassis {
+      width: 340px;
+      background: linear-gradient(180deg, #2b3238 0%, #1c2125 70%, #121517 100%);
+      border-radius: 35px 35px 25px 25px;
+      border: 4px solid var(--case-border);
+      box-shadow: 
+        inset 0 3px 6px rgba(255,255,255,0.2),
+        inset 0 -5px 12px rgba(0,0,0,0.8),
+        0 25px 50px -12px rgba(0, 0, 0, 0.85);
+      padding: 20px 20px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chassis::before, .chassis::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      top: 140px;
+      bottom: 120px;
+      background: repeating-linear-gradient(180deg, #111, #111 8px, #333 8px, #333 16px);
+      border-radius: 4px;
+    }
+    .chassis::before { left: -12px; }
+    .chassis::after { right: -12px; }
+
+    .status-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+    .brand-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 14px;
+      letter-spacing: 2px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .mode-switch-container {
+      display: flex;
+      align-items: center;
+      background: #111417;
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1px solid #000;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .switch-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 1px;
+      pointer-events: none;
+    }
+    .switch-label.active {
+      color: #22c55e;
+    }
+    .toggle-slot {
+      width: 38px;
+      height: 18px;
+      background: #090b0d;
+      border-radius: 12px;
+      position: relative;
+      border: 1px solid #374151;
+      pointer-events: none;
+    }
+    .toggle-thumb {
+      width: 14px;
+      height: 14px;
+      background: linear-gradient(180deg, #94a3b8 0%, #475569 100%);
+      border-radius: 50%;
+      position: absolute;
+      top: 1px;
+      left: 2px;
+      transition: left 0.15s ease, background 0.15s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+    .toggle-slot.auto-active .toggle-thumb {
+      left: 20px;
+      background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+    }
+
+    .leds {
+      display: flex;
+      gap: 10px;
+    }
+    .led-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 9px;
+      color: #64748b;
+      font-weight: 700;
+    }
+    .led {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--led-off);
+      border: 1px solid #000;
+      transition: all 0.15s ease;
+    }
+    .led.tx-on {
+      background: var(--led-tx);
+      box-shadow: 0 0 10px var(--led-tx);
+    }
+    .led.rx-on {
+      background: var(--led-rx);
+      box-shadow: 0 0 10px var(--led-rx);
+    }
+
+    .lcd-screen {
+      background: var(--lcd-bg);
+      border: 3px solid #111;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--lcd-text);
+      font-family: 'Orbitron', monospace;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+      position: relative;
+      overflow: hidden;
+    }
+    .lcd-screen::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);
+      pointer-events: none;
+    }
+    .lcd-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      border-bottom: 1px solid rgba(26, 41, 24, 0.4);
+      padding-bottom: 4px;
+      font-weight: 700;
+    }
+    .lcd-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 6px 0 4px;
+    }
+    .freq-readout {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
+    .freq-unit {
+      font-size: 11px;
+      font-weight: 800;
+      margin-left: 4px;
+    }
+    .channel-readout {
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .lcd-bottom {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .controls-grid {
+      background: #14171a;
+      border: 2px solid #000;
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .input-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .input-row label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      width: 75px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .input-row input {
+      flex: 1;
+      background: #20262d;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      color: #f8fafc;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 4px 8px;
+      outline: none;
+    }
+    .input-row input:focus {
+      border-color: var(--accent-orange);
+    }
+    .btn-tune {
+      background: #374151;
+      border: 1px solid #000;
+      color: #f8fafc;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .btn-tune:active {
+      background: var(--accent-orange);
+      color: #000;
+    }
+
+    .speaker-section {
+      background: #111417;
+      border: 2px solid #050607;
+      border-radius: 12px;
+      padding: 10px;
+      height: 110px;
+      overflow-y: auto;
+      box-shadow: inset 0 3px 6px rgba(0,0,0,0.8);
+    }
+    .speaker-section::-webkit-scrollbar { width: 4px; }
+    .speaker-section::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    .roster-title {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 2px;
+    }
+    .peer-badge {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1a1f24;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 4px;
+      border-left: 3px solid #475569;
+    }
+    .peer-badge.transmitting {
+      border-left-color: var(--led-rx);
+      background: #12281a;
+      color: #4ade80;
+    }
+
+    .ptt-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .ptt-button {
+      width: 100%;
+      height: 60px;
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      border: 3px solid #000;
+      border-radius: 12px;
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      box-shadow: 
+        0 5px 0 #4a0000,
+        0 8px 12px rgba(0,0,0,0.6);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.08s ease;
+    }
+    .ptt-button span {
+      font-size: 9px;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+    }
+    .ptt-button:active, .ptt-button.active {
+      transform: translateY(5px);
+      background: linear-gradient(180deg, #16a34a 0%, #14532d 100%);
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+    }
+    .ptt-button.auto-transmitting {
+      background: linear-gradient(180deg, #16a34a 0%, #14532d 100%);
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.7);
+    }
+
+    .footer-stamp {
+      text-align: center;
+      font-size: 9px;
+      color: #475569;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="rig-container">
+  
+  <div class="top-hardware">
+    <div class="antenna"></div>
+    <div class="knob-cluster">
+      <div class="knob" title="Channel Selector"></div>
+      <div class="knob" title="Volume / Power"></div>
+    </div>
+  </div>
+
+  <div class="chassis">
+    
+    <div class="status-panel">
+      <div class="brand-title">RTX-90 PRO</div>
+      
+      <div class="mode-switch-container" id="modeSwitchContainer" title="Click to toggle: Manual Push-To-Talk vs Always-On Open Mic">
+        <span class="switch-label active" id="labelPtt">PTT</span>
+        <div class="toggle-slot" id="modeSwitchSlot">
+          <div class="toggle-thumb"></div>
+        </div>
+        <span class="switch-label" id="labelAuto">VOX</span>
+      </div>
+
+      <div class="leds">
+        <div class="led-wrapper">
+          <div class="led" id="rxLed"></div>
+          <span>RX</span>
+        </div>
+        <div class="led-wrapper">
+          <div class="led" id="txLed"></div>
+          <span>TX</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcd-screen">
+      <div class="lcd-top">
+        <span id="lcdCallsign">OP: UNKNOWN</span>
+        <span id="lcdModeDisplay">MODE: PTT</span>
+      </div>
+      <div class="lcd-main">
+        <div>
+          <span class="freq-readout" id="lcdFreq">144.250</span>
+          <span class="freq-unit">MHz</span>
+        </div>
+        <span class="channel-readout" id="lcdChannel">CH: TEST 1</span>
+      </div>
+      <div class="lcd-bottom">
+        <span id="lcdStatus">STATUS: STANDBY (READY)</span>
+        <span id="lcdAudioLevel">MIC: MUTED</span>
+      </div>
+    </div>
+
+    <div class="controls-grid">
+      <div class="input-row">
+        <label>Callsign</label>
+        <input type="text" id="inputUsername" placeholder="Your name" value="Mystic_Anshh" maxlength="12" />
+      </div>
+      <div class="input-row">
+        <label>Channel</label>
+        <input type="text" id="inputChannel" placeholder="Channel" value="test 1" maxlength="14" />
+      </div>
+      <div class="input-row">
+        <label>Freq MHz</label>
+        <input type="number" id="inputFreq" value="144.250" step="0.025" min="100" max="999" />
+        <button class="btn-tune" id="btnTune">Tune / Set</button>
+      </div>
+    </div>
+
+    <div class="speaker-section">
+      <div class="roster-title">Connected Units On Frequency</div>
+      <div class="peer-badge" id="selfBadge">
+        <span id="selfCallsignLabel">Mystic_Anshh (You)</span>
+        <span id="selfStateLabel" style="font-size: 10px; color: #64748b;">STANDBY</span>
+      </div>
+      <div id="dynamicPeers"></div>
+    </div>
+
+    <div class="ptt-wrapper">
+      <button class="ptt-button" id="pttBtn">
+        <span id="pttMainText">PUSH TO TALK</span>
+        <span id="pttSubText">HOLD DOWN TO TRANSMIT (OR SPACEBAR)</span>
+      </button>
+    </div>
+
+    <div class="footer-stamp">SECURE P2P TACTICAL COMM LINK</div>
+
+  </div>
+</div>
+
+<script>
+  const socket = io();
+
+  let audioCtx = null;
+  let isContinuousOpenMode = false;
+  let isTransmitting = false;
+  let rawMicStream = null;
+  let cleanDspStream = null;
+
+  function ensureAudioContext() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playRadioChirp(type = 'tx_on') {
+    try {
+      ensureAudioContext();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === 'tx_on') {
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.04);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.04);
+      } else if (type === 'roger_beep') {
+        osc.frequency.setValueAtTime(1209, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.10, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+      }
+    } catch(e) {}
+  }
+
+  // Optimize SDP to enforce high quality Opus audio
+  function forceHighQualityOpusSDP(sdp) {
+    return sdp.replace(/a=fmtp:111 ((?:(?!minptime).)*)\r\n/g, (match, p1) => {
+      return `a=fmtp:111 ${p1};stereo=0;sprop-stereo=0;maxaveragebitrate=64000;cbr=1;useinbandfec=1\r\n`;
+    });
+  }
+
+  const lcdCallsign = document.getElementById('lcdCallsign');
+  const lcdModeDisplay = document.getElementById('lcdModeDisplay');
+  const lcdFreq = document.getElementById('lcdFreq');
+  const lcdChannel = document.getElementById('lcdChannel');
+  const lcdStatus = document.getElementById('lcdStatus');
+  const lcdAudioLevel = document.getElementById('lcdAudioLevel');
+  const rxLed = document.getElementById('rxLed');
+  const txLed = document.getElementById('txLed');
+  const pttBtn = document.getElementById('pttBtn');
+  const pttMainText = document.getElementById('pttMainText');
+  const pttSubText = document.getElementById('pttSubText');
+  const dynamicPeers = document.getElementById('dynamicPeers');
+  const selfCallsignLabel = document.getElementById('selfCallsignLabel');
+  const selfBadge = document.getElementById('selfBadge');
+  const selfStateLabel = document.getElementById('selfStateLabel');
+
+  const modeSwitchContainer = document.getElementById('modeSwitchContainer');
+  const modeSwitchSlot = document.getElementById('modeSwitchSlot');
+  const labelPtt = document.getElementById('labelPtt');
+  const labelAuto = document.getElementById('labelAuto');
+
+  const inputUsername = document.getElementById('inputUsername');
+  const inputChannel = document.getElementById('inputChannel');
+  const inputFreq = document.getElementById('inputFreq');
+  const btnTune = document.getElementById('btnTune');
+
+  let currentChannel = inputChannel.value.trim().toUpperCase();
+  let currentUsername = inputUsername.value.trim();
+  const peers = {}; 
+  const peerAudioElements = {};
+  const candidateQueues = {};
+
+  const iceServers = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  modeSwitchContainer.addEventListener('click', async () => {
+    if (!cleanDspStream) await connectRadio();
+
+    isContinuousOpenMode = !isContinuousOpenMode;
+
+    if (isContinuousOpenMode) {
+      modeSwitchSlot.classList.add('auto-active');
+      labelAuto.classList.add('active');
+      labelPtt.classList.remove('active');
+      lcdModeDisplay.innerText = "MODE: VOX";
+      pttBtn.classList.add('auto-transmitting');
+      pttMainText.innerText = "OPEN MIC LIVE (TX ON)";
+      pttSubText.innerText = "CONTINUOUS BROADCAST ACTIVE • CLICK SWITCH TO STOP";
+      startTransmission();
+    } else {
+      modeSwitchSlot.classList.remove('auto-active');
+      labelPtt.classList.add('active');
+      labelAuto.classList.remove('active');
+      lcdModeDisplay.innerText = "MODE: PTT";
+      pttBtn.classList.remove('auto-transmitting');
+      pttMainText.innerText = "PUSH TO TALK";
+      pttSubText.innerText = "HOLD DOWN TO TRANSMIT (OR SPACEBAR)";
+      stopTransmission();
+    }
+  });
+
+  async function connectRadio() {
+    currentChannel = inputChannel.value.trim().toUpperCase() || "DEFAULT";
+    currentUsername = inputUsername.value.trim() || "OPERATOR";
+    const freq = parseFloat(inputFreq.value || 144.25).toFixed(3);
+
+    lcdCallsign.innerText = `OP: ${currentUsername.toUpperCase()}`;
+    lcdChannel.innerText = `CH: ${currentChannel}`;
+    lcdFreq.innerText = freq;
+    selfCallsignLabel.innerText = `${currentUsername} (You)`;
+    lcdStatus.innerText = "STATUS: ONLINE / STANDBY";
+
+    if (!cleanDspStream) {
+      try {
+        // Industry-Standard Noise Suppression, Echo Cancellation, AGC
+        rawMicStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            channelCount: 1,
+            sampleRate: 48000
+          },
+          video: false
+        });
+
+        ensureAudioContext();
+
+        // Studio DSP Pipeline (Clean Voice, No background rumble/hiss)
+        const micSource = audioCtx.createMediaStreamSource(rawMicStream);
+        
+        // High-pass filter cuts AC/Fan vibration & desk rumbles below 85Hz
+        const highPassFilter = audioCtx.createBiquadFilter();
+        highPassFilter.type = 'highpass';
+        highPassFilter.frequency.value = 85;
+
+        // Controlled Gain: Prevents distortion and harsh clipping
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 1.4;
+
+        const destination = audioCtx.createMediaStreamDestination();
+        micSource.connect(highPassFilter);
+        highPassFilter.connect(gainNode);
+        gainNode.connect(destination);
+
+        cleanDspStream = destination.stream;
+        cleanDspStream.getAudioTracks().forEach(t => t.enabled = false); // Start muted
+      } catch (err) {
+        lcdStatus.innerText = "ERROR: MIC DENIED";
+        alert("Microphone permission zaroori hai!");
+        return;
+      }
+    }
+
+    dynamicPeers.innerHTML = '';
+    Object.keys(peers).forEach(id => {
+      peers[id].close();
+      delete peers[id];
+      if (peerAudioElements[id]) {
+        peerAudioElements[id].remove();
+        delete peerAudioElements[id];
+      }
+    });
+
+    socket.emit('join-channel', { channel: currentChannel, username: currentUsername });
+  }
+
+  btnTune.addEventListener('click', () => {
+    connectRadio();
+    playRadioChirp('tx_on');
+  });
+
+  function getOrCreatePeerConnection(peerId, peerName) {
+    if (peers[peerId]) return peers[peerId];
+
+    const pc = new RTCPeerConnection(iceServers);
+
+    // Send ONLY single clean DSP stream (fixes double-voice/echo bug)
+    const streamToSend = cleanDspStream || rawMicStream;
+    if (streamToSend) {
+      streamToSend.getAudioTracks().forEach(track => pc.addTrack(track, streamToSend));
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('ice-candidate', { to: peerId, candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      ensureAudioContext();
+
+      let audio = peerAudioElements[peerId];
+      if (!audio) {
+        audio = document.createElement('audio');
+        audio.autoplay = true;
+        audio.playsInline = true;
+        document.body.appendChild(audio);
+        peerAudioElements[peerId] = audio;
+      }
+
+      // Direct hardware-accelerated stream playback
+      audio.srcObject = event.streams[0];
+      audio.volume = 1.0;
+      audio.play().catch(() => {});
+    };
+
+    if (!document.getElementById(`peer-${peerId}`)) {
+      const badge = document.createElement('div');
+      badge.className = 'peer-badge';
+      badge.id = `peer-${peerId}`;
+      badge.innerHTML = `<span>${peerName || 'Unit'}</span><span id="state-${peerId}" style="font-size: 10px; color: #64748b;">STANDBY</span>`;
+      dynamicPeers.appendChild(badge);
+    }
+
+    peers[peerId] = pc;
+    return pc;
+  }
+
+  async function drainCandidates(peerId, pc) {
+    if (candidateQueues[peerId]) {
+      for (const cand of candidateQueues[peerId]) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch(e) {}
+      }
+      delete candidateQueues[peerId];
+    }
+  }
+
+  socket.on('current-peers', (peerList) => {
+    dynamicPeers.innerHTML = '';
+    peerList.forEach(p => {
+      const pc = getOrCreatePeerConnection(p.id, p.username);
+      pc.createOffer().then(offer => {
+        const modifiedSdp = forceHighQualityOpusSDP(offer.sdp);
+        return pc.setLocalDescription(new RTCSessionDescription({ type: offer.type, sdp: modifiedSdp }));
+      }).then(() => {
+        socket.emit('offer', { to: p.id, offer: pc.localDescription });
+      });
+    });
+  });
+
+  socket.on('user-joined', ({ peerId, username: peerName }) => {
+    getOrCreatePeerConnection(peerId, peerName);
+  });
+
+  socket.on('offer', async ({ from, offer, username: peerName }) => {
+    const pc = getOrCreatePeerConnection(from, peerName);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    await drainCandidates(from, pc);
+    const answer = await pc.createAnswer();
+    const modifiedAnswer = forceHighQualityOpusSDP(answer.sdp);
+    await pc.setLocalDescription(new RTCSessionDescription({ type: answer.type, sdp: modifiedAnswer }));
+    socket.emit('answer', { to: from, answer: pc.localDescription });
+  });
+
+  socket.on('answer', async ({ from, answer }) => {
+    const pc = peers[from];
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      await drainCandidates(from, pc);
+    }
+  });
+
+  socket.on('ice-candidate', async ({ from, candidate }) => {
+    const pc = peers[from];
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {}
+    } else {
+      if (!candidateQueues[from]) candidateQueues[from] = [];
+      candidateQueues[from].push(candidate);
+    }
+  });
+
+  socket.on('peer-talking', ({ peerId, isTalking }) => {
+    const badge = document.getElementById(`peer-${peerId}`);
+    const state = document.getElementById(`state-${peerId}`);
+    if (badge) {
+      if (isTalking) {
+        badge.classList.add('transmitting');
+        if (state) state.innerText = "TRANSMITTING...";
+        rxLed.classList.add('rx-on');
+        lcdStatus.innerText = "RX: INCOMING AUDIO";
+      } else {
+        badge.classList.remove('transmitting');
+        if (state) state.innerText = "STANDBY";
+        rxLed.classList.remove('rx-on');
+        lcdStatus.innerText = "STATUS: STANDBY (READY)";
+        playRadioChirp('roger_beep');
+      }
+    }
+  });
+
+  socket.on('user-left', (peerId) => {
+    if (peers[peerId]) { peers[peerId].close(); delete peers[peerId]; }
+    if (peerAudioElements[peerId]) { peerAudioElements[peerId].remove(); delete peerAudioElements[peerId]; }
+    const badge = document.getElementById(`peer-${peerId}`);
+    if (badge) badge.remove();
+  });
+
+  function startTransmission() {
+    if (isTransmitting) return;
+    ensureAudioContext();
+
+    isTransmitting = true;
+    
+    // Unmute single audio pipeline cleanly
+    if (cleanDspStream) cleanDspStream.getAudioTracks().forEach(t => t.enabled = true);
+    if (rawMicStream) rawMicStream.getAudioTracks().forEach(t => t.enabled = true);
+
+    pttBtn.classList.add('active');
+    txLed.classList.add('tx-on');
+    selfBadge.classList.add('transmitting');
+    selfStateLabel.innerText = "TRANSMITTING";
+    lcdStatus.innerText = isContinuousOpenMode ? "TX: VOX LIVE" : "TX: PTT BROADCASTING";
+    lcdAudioLevel.innerText = "MIC: LIVE (TX)";
+    playRadioChirp('tx_on');
+    socket.emit('talking-state', true);
+  }
+
+  function stopTransmission() {
+    if (!isTransmitting) return;
+    isTransmitting = false;
+
+    // Mute transmission
+    if (cleanDspStream) cleanDspStream.getAudioTracks().forEach(t => t.enabled = false);
+    if (rawMicStream) rawMicStream.getAudioTracks().forEach(t => t.enabled = false);
+
+    pttBtn.classList.remove('active');
+    txLed.classList.remove('tx-on');
+    selfBadge.classList.remove('transmitting');
+    selfStateLabel.innerText = "STANDBY";
+    lcdStatus.innerText = "STATUS: STANDBY (READY)";
+    lcdAudioLevel.innerText = "MIC: MUTED";
+    playRadioChirp('roger_beep');
+    socket.emit('talking-state', false);
+  }
+
+  pttBtn.addEventListener('mousedown', () => { if (!isContinuousOpenMode) startTransmission(); });
+  window.addEventListener('mouseup', () => { if (!isContinuousOpenMode) stopTransmission(); });
+  pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (!isContinuousOpenMode) startTransmission(); });
+  window.addEventListener('touchend', () => { if (!isContinuousOpenMode) stopTransmission(); });
+
+  window.addEventListener('keydown', (e) => {
+    if (!isContinuousOpenMode && e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT') {
+      e.preventDefault();
+      startTransmission();
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (!isContinuousOpenMode && e.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
+      stopTransmission();
+    }
+  });
+
+  window.addEventListener('click', () => {
+    ensureAudioContext();
+    Object.values(peerAudioElements).forEach(audio => {
+      audio.play().catch(() => {});
+    });
+  });
+
+  connectRadio();
+</script>
+</body>
+</html>
