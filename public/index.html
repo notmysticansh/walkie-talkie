@@ -472,6 +472,10 @@
         <input type="number" id="inputFreq" value="144.250" step="0.025" min="100" max="999" />
         <button class="btn-tune" id="btnTune">Tune / Set</button>
       </div>
+      <div class="input-row">
+        <label>Mic Device</label>
+        <select id="micSelect" style="flex: 1; background: #20262d; border: 1px solid #374151; border-radius: 4px; color: #f8fafc; font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; padding: 4px 6px; outline: none;"></select>
+      </div>
     </div>
 
     <div class="speaker-section">
@@ -566,6 +570,18 @@
   const inputChannel = document.getElementById('inputChannel');
   const inputFreq = document.getElementById('inputFreq');
   const btnTune = document.getElementById('btnTune');
+  const micSelect = document.getElementById('micSelect');
+
+  // Load saved preferences
+  if (localStorage.getItem('saved_callsign')) {
+    inputUsername.value = localStorage.getItem('saved_callsign');
+  }
+  if (localStorage.getItem('saved_channel')) {
+    inputChannel.value = localStorage.getItem('saved_channel');
+  }
+  if (localStorage.getItem('saved_freq')) {
+    inputFreq.value = localStorage.getItem('saved_freq');
+  }
 
   let currentChannel = inputChannel.value.trim().toUpperCase();
   let currentUsername = inputUsername.value.trim();
@@ -579,6 +595,34 @@
       { urls: 'stun:stun1.l.google.com:19302' }
     ]
   };
+
+  async function populateAudioDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const savedMic = localStorage.getItem('saved_mic_id');
+      micSelect.innerHTML = '';
+      audioInputs.forEach((dev, index) => {
+        const option = document.createElement('option');
+        option.value = dev.deviceId;
+        option.text = dev.label || `Microphone ${index + 1}`;
+        if (savedMic && dev.deviceId === savedMic) {
+          option.selected = true;
+        }
+        micSelect.appendChild(option);
+      });
+    } catch(e) {}
+  }
+
+  micSelect.addEventListener('change', () => {
+    localStorage.setItem('saved_mic_id', micSelect.value);
+    if (rawMicStream) {
+      rawMicStream.getTracks().forEach(t => t.stop());
+      rawMicStream = null;
+    }
+    cleanDspStream = null;
+    connectRadio();
+  });
 
   modeSwitchContainer.addEventListener('click', async () => {
     if (!cleanDspStream) await connectRadio();
@@ -611,6 +655,10 @@
     currentUsername = inputUsername.value.trim() || "OPERATOR";
     const freq = parseFloat(inputFreq.value || 144.25).toFixed(3);
 
+    localStorage.setItem('saved_callsign', currentUsername);
+    localStorage.setItem('saved_channel', currentChannel);
+    localStorage.setItem('saved_freq', freq);
+
     lcdCallsign.innerText = `OP: ${currentUsername.toUpperCase()}`;
     lcdChannel.innerText = `CH: ${currentChannel}`;
     lcdFreq.innerText = freq;
@@ -619,17 +667,25 @@
 
     if (!cleanDspStream) {
       try {
-        // Industry-Standard Noise Suppression, Echo Cancellation, AGC
+        const selectedMicId = micSelect.value || localStorage.getItem('saved_mic_id');
+        const audioConstraints = {
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          channelCount: 1,
+          sampleRate: 48000
+        };
+
+        if (selectedMicId) {
+          audioConstraints.deviceId = { exact: selectedMicId };
+        }
+
         rawMicStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: { ideal: true },
-            noiseSuppression: { ideal: true },
-            autoGainControl: { ideal: true },
-            channelCount: 1,
-            sampleRate: 48000
-          },
+          audio: audioConstraints,
           video: false
         });
+
+        await populateAudioDevices();
 
         ensureAudioContext();
 
@@ -852,14 +908,14 @@
   window.addEventListener('touchend', () => { if (!isContinuousOpenMode) stopTransmission(); });
 
   window.addEventListener('keydown', (e) => {
-    if (!isContinuousOpenMode && e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT') {
+    if (!isContinuousOpenMode && e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
       e.preventDefault();
       startTransmission();
     }
   });
 
   window.addEventListener('keyup', (e) => {
-    if (!isContinuousOpenMode && e.code === 'Space' && document.activeElement.tagName !== 'INPUT') {
+    if (!isContinuousOpenMode && e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
       stopTransmission();
     }
   });
