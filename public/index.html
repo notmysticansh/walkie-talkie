@@ -268,17 +268,20 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      width: 100%;
     }
     .input-row label {
       font-size: 11px;
       font-weight: 700;
       color: #94a3b8;
       width: 75px;
+      flex-shrink: 0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     .input-row input {
       flex: 1;
+      min-width: 0;
       background: #20262d;
       border: 1px solid #374151;
       border-radius: 4px;
@@ -289,7 +292,25 @@
       padding: 4px 8px;
       outline: none;
     }
-    .input-row input:focus {
+    .input-row select {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+      background: #20262d;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      color: #f8fafc;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 6px;
+      outline: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .input-row input:focus, .input-row select:focus {
       border-color: var(--accent-orange);
     }
     .btn-tune {
@@ -303,6 +324,7 @@
       font-weight: 700;
       cursor: pointer;
       text-transform: uppercase;
+      flex-shrink: 0;
     }
     .btn-tune:active {
       background: var(--accent-orange);
@@ -474,7 +496,7 @@
       </div>
       <div class="input-row">
         <label>Mic Device</label>
-        <select id="micSelect" style="flex: 1; background: #20262d; border: 1px solid #374151; border-radius: 4px; color: #f8fafc; font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 600; padding: 4px 6px; outline: none;"></select>
+        <select id="micSelect"></select>
       </div>
     </div>
 
