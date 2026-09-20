@@ -560,7 +560,6 @@
     } catch(e) {}
   }
 
-  // Optimize SDP to enforce high quality Opus audio
   function forceHighQualityOpusSDP(sdp) {
     return sdp.replace(/a=fmtp:111 ((?:(?!minptime).)*)\r\n/g, (match, p1) => {
       return `a=fmtp:111 ${p1};stereo=0;sprop-stereo=0;maxaveragebitrate=64000;cbr=1;useinbandfec=1\r\n`;
@@ -618,47 +617,25 @@
     ]
   };
 
-  async function populateAudioDevices() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(d => d.kind === 'audioinput');
-      const savedMic = localStorage.getItem('saved_mic_id');
-      micSelect.innerHTML = '';
-      audioInputs.forEach((dev, index) => {
-        const option = document.createElement('option');
-        option.value = dev.deviceId;
-        option.text = dev.label || `Microphone ${index + 1}`;
-        if (savedMic && dev.deviceId === savedMic) {
-          option.selected = true;
-        }
-        micSelect.appendChild(option);
-      });
-    } catch(e) {}
-  }
-
-  micSelect.addEventListener('change', async () => {
-    const selectedMicId = micSelect.value;
-    localStorage.setItem('saved_mic_id', selectedMicId);
+  // 1. Seamless Hardware Mic Switch Engine
+  async function switchMicrophone(deviceId) {
+    if (deviceId) localStorage.setItem('saved_mic_id', deviceId);
+    micSelect.value = deviceId;
 
     try {
-      // 1. Purana raw hardware stream release karo
       if (rawMicStream) {
         rawMicStream.getTracks().forEach(t => t.stop());
         rawMicStream = null;
       }
 
-      // 2. Naya hardware mic capture karo universal constraints ke sath
       const audioConstraints = {
         echoCancellation: { ideal: true },
         noiseSuppression: { ideal: true },
         autoGainControl: { ideal: true },
         channelCount: 1,
-        sampleRate: 48000
+        sampleRate: 48000,
+        deviceId: deviceId ? { exact: deviceId } : undefined
       };
-
-      if (selectedMicId) {
-        audioConstraints.deviceId = { exact: selectedMicId };
-      }
 
       rawMicStream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
@@ -667,7 +644,7 @@
 
       ensureAudioContext();
 
-      // 3. Clean DSP pipeline re-route karo
+      // DSP Pipeline Routing
       const micSource = audioCtx.createMediaStreamSource(rawMicStream);
       const highPassFilter = audioCtx.createBiquadFilter();
       highPassFilter.type = 'highpass';
@@ -683,11 +660,9 @@
 
       cleanDspStream = destination.stream;
       const newTrack = cleanDspStream.getAudioTracks()[0];
-      
-      // Current transmission state maintain rakho (agar bol rahe the toh live rahe, warna mute)
       newTrack.enabled = isTransmitting;
 
-      // 4. Sabhi active peer connections par seamless hot-swap
+      // Active peers par track hot-swap (No call drop)
       Object.values(peers).forEach(pc => {
         const senders = pc.getSenders();
         const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
@@ -696,12 +671,77 @@
         }
       });
 
+      // Output sound ko bhi connected device par shift karo
+      routeAudioOutputToDevice();
+
     } catch (err) {
-      console.error("Audio device switch failed:", err);
-      lcdStatus.innerText = "MIC SWITCH ERR";
+      console.error("Mic switch error:", err);
     }
+  }
+
+  // 2. Headset/Earbuds par incoming audio auto-route karo
+  async function routeAudioOutputToDevice() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      const targetOutput = audioOutputs.find(d => 
+        /headset|bluetooth|earphone|airpod|buds|wireless/i.test(d.label)
+      ) || audioOutputs[0];
+
+      if (targetOutput) {
+        Object.values(peerAudioElements).forEach(async (audioEl) => {
+          if (typeof audioEl.setSinkId === 'function') {
+            await audioEl.setSinkId(targetOutput.deviceId);
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
+  // 3. Populate + Discord-style Auto-Priority Detection
+  async function populateAudioDevices(isAutoEvent = false) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const savedMic = localStorage.getItem('saved_mic_id');
+      
+      micSelect.innerHTML = '';
+      let externalMicId = null;
+
+      audioInputs.forEach((dev, index) => {
+        const option = document.createElement('option');
+        option.value = dev.deviceId;
+        option.text = dev.label || `Microphone ${index + 1}`;
+        micSelect.appendChild(option);
+
+        // Naye connected external/bluetooth gear ko pehchano
+        if (/headset|bluetooth|wireless|airpod|buds|hands-free|usb/i.test(dev.label)) {
+          externalMicId = dev.deviceId;
+        }
+      });
+
+      // Selection Priority: Naya External Earbud > Saved Mic > Default Device
+      let targetMic = externalMicId || (savedMic && audioInputs.some(d => d.deviceId === savedMic) ? savedMic : (audioInputs[0]?.deviceId || ''));
+
+      micSelect.value = targetMic;
+
+      if (isAutoEvent && targetMic) {
+        await switchMicrophone(targetMic);
+      }
+
+    } catch(e) {}
+  }
+
+  // Dropdown manual click listener
+  micSelect.addEventListener('change', () => {
+    switchMicrophone(micSelect.value);
   });
 
+  // Discord Hardware Watcher (Headphone lagte/hat-te hi auto switch)
+  navigator.mediaDevices.ondevicechange = async () => {
+    await populateAudioDevices(true);
+  };
+  
   modeSwitchContainer.addEventListener('click', async () => {
     if (!cleanDspStream) await connectRadio();
 
@@ -767,15 +807,12 @@
 
         ensureAudioContext();
 
-        // Studio DSP Pipeline (Clean Voice, No background rumble/hiss)
+        // Studio DSP Pipeline
         const micSource = audioCtx.createMediaStreamSource(rawMicStream);
-        
-        // High-pass filter cuts AC/Fan vibration & desk rumbles below 85Hz
         const highPassFilter = audioCtx.createBiquadFilter();
         highPassFilter.type = 'highpass';
         highPassFilter.frequency.value = 85;
 
-        // Controlled Gain: Prevents distortion and harsh clipping
         const gainNode = audioCtx.createGain();
         gainNode.gain.value = 1.4;
 
@@ -816,7 +853,6 @@
 
     const pc = new RTCPeerConnection(iceServers);
 
-    // Send ONLY single clean DSP stream (fixes double-voice/echo bug)
     const streamToSend = cleanDspStream || rawMicStream;
     if (streamToSend) {
       streamToSend.getAudioTracks().forEach(track => pc.addTrack(track, streamToSend));
@@ -840,7 +876,6 @@
         peerAudioElements[peerId] = audio;
       }
 
-      // Direct hardware-accelerated stream playback
       audio.srcObject = event.streams[0];
       audio.volume = 1.0;
       audio.play().catch(() => {});
@@ -948,7 +983,6 @@
 
     isTransmitting = true;
     
-    // Unmute single audio pipeline cleanly
     if (cleanDspStream) cleanDspStream.getAudioTracks().forEach(t => t.enabled = true);
     if (rawMicStream) rawMicStream.getAudioTracks().forEach(t => t.enabled = true);
 
@@ -966,7 +1000,6 @@
     if (!isTransmitting) return;
     isTransmitting = false;
 
-    // Mute transmission
     if (cleanDspStream) cleanDspStream.getAudioTracks().forEach(t => t.enabled = false);
     if (rawMicStream) rawMicStream.getAudioTracks().forEach(t => t.enabled = false);
 
@@ -1009,4 +1042,3 @@
 </script>
 </body>
 </html>
-
