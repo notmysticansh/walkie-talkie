@@ -636,14 +636,70 @@
     } catch(e) {}
   }
 
-  micSelect.addEventListener('change', () => {
-    localStorage.setItem('saved_mic_id', micSelect.value);
-    if (rawMicStream) {
-      rawMicStream.getTracks().forEach(t => t.stop());
-      rawMicStream = null;
+  micSelect.addEventListener('change', async () => {
+    const selectedMicId = micSelect.value;
+    localStorage.setItem('saved_mic_id', selectedMicId);
+
+    try {
+      // 1. Purana raw hardware stream release karo
+      if (rawMicStream) {
+        rawMicStream.getTracks().forEach(t => t.stop());
+        rawMicStream = null;
+      }
+
+      // 2. Naya hardware mic capture karo universal constraints ke sath
+      const audioConstraints = {
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: 1,
+        sampleRate: 48000
+      };
+
+      if (selectedMicId) {
+        audioConstraints.deviceId = { exact: selectedMicId };
+      }
+
+      rawMicStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: false
+      });
+
+      ensureAudioContext();
+
+      // 3. Clean DSP pipeline re-route karo
+      const micSource = audioCtx.createMediaStreamSource(rawMicStream);
+      const highPassFilter = audioCtx.createBiquadFilter();
+      highPassFilter.type = 'highpass';
+      highPassFilter.frequency.value = 85;
+
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 1.4;
+
+      const destination = audioCtx.createMediaStreamDestination();
+      micSource.connect(highPassFilter);
+      highPassFilter.connect(gainNode);
+      gainNode.connect(destination);
+
+      cleanDspStream = destination.stream;
+      const newTrack = cleanDspStream.getAudioTracks()[0];
+      
+      // Current transmission state maintain rakho (agar bol rahe the toh live rahe, warna mute)
+      newTrack.enabled = isTransmitting;
+
+      // 4. Sabhi active peer connections par seamless hot-swap
+      Object.values(peers).forEach(pc => {
+        const senders = pc.getSenders();
+        const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+        if (audioSender) {
+          audioSender.replaceTrack(newTrack);
+        }
+      });
+
+    } catch (err) {
+      console.error("Audio device switch failed:", err);
+      lcdStatus.innerText = "MIC SWITCH ERR";
     }
-    cleanDspStream = null;
-    connectRadio();
   });
 
   modeSwitchContainer.addEventListener('click', async () => {
