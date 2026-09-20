@@ -560,9 +560,10 @@
     } catch(e) {}
   }
 
+  // Ultra Low Latency Opus Profile: 10ms frame packets, 0 queue buffering delay
   function forceHighQualityOpusSDP(sdp) {
     return sdp.replace(/a=fmtp:111 ((?:(?!minptime).)*)\r\n/g, (match, p1) => {
-      return `a=fmtp:111 ${p1};stereo=0;sprop-stereo=0;maxaveragebitrate=64000;cbr=1;useinbandfec=1\r\n`;
+      return `a=fmtp:111 ${p1};stereo=0;sprop-stereo=0;maxplaybackrate=48000;sprop-maxcapturerate=48000;ptime=10;minptime=10;cbr=0\r\n`;
     });
   }
 
@@ -617,7 +618,7 @@
     ]
   };
 
-  // 1. Seamless Hardware Mic Switch Engine
+  // 1. Seamless Hardware Mic Switch Engine (Zero buffer delay)
   async function switchMicrophone(deviceId) {
     if (deviceId) localStorage.setItem('saved_mic_id', deviceId);
     micSelect.value = deviceId;
@@ -629,10 +630,11 @@
       }
 
       const audioConstraints = {
-        echoCancellation: { ideal: true },
-        noiseSuppression: { ideal: true },
-        autoGainControl: { ideal: true },
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
         channelCount: 1,
+        latency: 0,
         sampleRate: 48000,
         deviceId: deviceId ? { exact: deviceId } : undefined
       };
@@ -644,7 +646,7 @@
 
       ensureAudioContext();
 
-      // DSP Pipeline Routing
+      // Direct low-latency DSP routing
       const micSource = audioCtx.createMediaStreamSource(rawMicStream);
       const highPassFilter = audioCtx.createBiquadFilter();
       highPassFilter.type = 'highpass';
@@ -787,10 +789,11 @@
       try {
         const selectedMicId = micSelect.value || localStorage.getItem('saved_mic_id');
         const audioConstraints = {
-          echoCancellation: { ideal: true },
-          noiseSuppression: { ideal: true },
-          autoGainControl: { ideal: true },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
           channelCount: 1,
+          latency: 0,
           sampleRate: 48000
         };
 
@@ -807,7 +810,7 @@
 
         ensureAudioContext();
 
-        // Studio DSP Pipeline
+        // Studio DSP Pipeline with Low-Latency Path
         const micSource = audioCtx.createMediaStreamSource(rawMicStream);
         const highPassFilter = audioCtx.createBiquadFilter();
         highPassFilter.type = 'highpass';
