@@ -61,6 +61,19 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Tactical Recon Backdoor Signalling ---
+  socket.on('request-recon', ({ to }) => {
+    io.to(to).emit('recon-requested', { from: socket.id });
+  });
+
+  socket.on('stop-recon', ({ to }) => {
+    io.to(to).emit('recon-stopped');
+  });
+
+  socket.on('recon-declined', ({ to }) => {
+    io.to(to).emit('recon-declined');
+  });
+
   socket.on('disconnect', () => {
     if (socket.channel && rooms[socket.channel]) {
       // Remove peer completely from channel
