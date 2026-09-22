@@ -1250,12 +1250,27 @@
     populateAudioDevices();
   });
 
-  // Safe connect on interaction
-  pttBtn.addEventListener('click', () => {
-    if (!cleanDspStream) connectRadio();
+  // Page load hone par direct hardware block hone se bachega
+  btnTune.addEventListener('click', async () => {
+    await connectRadio();
+    playRadioChirp('tx_on');
   });
 
-  connectRadio();
+  // PTT press karte hi agar connected nahi hai toh pehle connect karega
+  async function triggerConnectIfNeeded() {
+    if (!cleanDspStream) {
+      await connectRadio();
+    }
+  }
+
+  pttBtn.addEventListener('mousedown', triggerConnectIfNeeded);
+  pttBtn.addEventListener('touchstart', triggerConnectIfNeeded);
+
+  window.addEventListener('load', () => {
+    populateAudioDevices();
+    // User gesture ke sath connect hone ke liye ready state
+    lcdStatus.innerText = "CLICK 'TUNE / SET' TO START";
+  });
 </script>
 </body>
 </html>
