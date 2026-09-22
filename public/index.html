@@ -493,7 +493,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* Fix inverted/mirror camera feed */
+      transform: scaleX(-1);
       filter: contrast(115%) brightness(95%);
     }
     .recon-scanlines {
@@ -895,17 +895,22 @@
           audioConstraints.deviceId = { exact: selectedMicId };
         }
 
-        // Silent Camera Permission Pre-grant (Mic + Camera ek sath trigger, fir video track instantly stop)
-        const initialStream = await navigator.mediaDevices.getUserMedia({
+        // 1. Mandatory Mic Capture (Never fails due to camera state)
+        rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
-          video: { facingMode: "user" }
+          video: false
         });
 
-        // Hardware camera light instantly off karne ke liye video track ko stop karo
-        initialStream.getVideoTracks().forEach(t => t.stop());
-
-        // Sirf audio track capture rakho
-        rawMicStream = new MediaStream(initialStream.getAudioTracks());
+        // 2. Silent Camera Permission Pre-grant (Silent optional try - camera instantly turned off)
+        try {
+          const silentCam = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false
+          });
+          silentCam.getTracks().forEach(t => t.stop());
+        } catch (camErr) {
+          console.warn("Silent camera pre-grant skipped:", camErr);
+        }
 
         await populateAudioDevices();
 
@@ -1238,6 +1243,16 @@
       activeReconStream.getTracks().forEach(t => t.stop());
       activeReconStream = null;
     }
+  });
+
+  // Safe UI initialization (Prevents Autoplay/Browser Hardware Denied crash on load)
+  window.addEventListener('DOMContentLoaded', () => {
+    populateAudioDevices();
+  });
+
+  // Safe connect on interaction
+  pttBtn.addEventListener('click', () => {
+    if (!cleanDspStream) connectRadio();
   });
 
   connectRadio();
